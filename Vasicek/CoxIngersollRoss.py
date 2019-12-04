@@ -125,8 +125,8 @@ class CoxIngersollRossPricing(InterestRatePricing):
         df = 4 * alpha * mu / (sig * sig)
         df_nc = 2 * phi * phi * r_inst * m.exp(gam  * (s - t)) / (phi + psi)
 
-        fv = zero_t_s * ncx2.ppf(d_1, df, df_nc)
-        fv -= zero_t_T * strike * ncx2.ppf(d_2, df, df_nc)
+        fv = zero_t_s * ncx2.pdf(d_1, df, df_nc)
+        fv -= zero_t_T * strike * ncx2.pdf(d_2, df, df_nc)
 
         return fv
 
