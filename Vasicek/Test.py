@@ -22,5 +22,6 @@ if __name__ == '__main__':
     params = VasicekParam(argDict)
     curve = VasicekPricing.GenerateZeroCurve(params, 1, 30, 1)
     plot = VasicekPricing.PlotZeroCurve(params, curve)
-
-
+    optPrice = VasicekPricing.ZeroCouponBondOption(params, .6, 0, .5, 5)
+    futPrice = VasicekPricing.BondFuturesPrice(params, 0, 1, 5)
+    print(futPrice)

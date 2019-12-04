@@ -90,62 +90,177 @@ class VasicekPricing(object):
             raise Exception('\n'.join(errs))
         # Generate term structure { T - t -> zero_coupon_yield }:
         termStruct = {}
-        origParams = params.Params.copy()
         while tStart < tEnd:
-            params.t = tStart
-            bondPrice = VasicekPricing.ZeroCouponBond(params)
+            bondPrice = VasicekPricing.ZeroCouponBond(params, tStart, tEnd)
             _yield = m.log(1 / bondPrice) / (tEnd - tStart)
             termStruct[tEnd - tStart] = _yield
             tStart += tStep
-        # Return passed parameters to original state:
-        params = origParams
         
         return termStruct
 
     @staticmethod
-    def ZeroCouponBond(params):
-        """
+    def ZeroCouponBond(params, today, bondMaturity):
+        """ (From Equation 7.30)
         * Calculate price of zero coupon bond obeying Vasicek's mean reversion model.
         dr = alpha (mu - r) + sigma * dW
         Inputs:
         * params: Expecting a VasicekParam object.
+        * today: Years from present (numeric, non-negative).
+        * bondMaturity: Years until bond matures from present (numeric, non-negative).
         """
-        VasicekPricing.__Validate(params)
+        errMsgs = []
+        if not isinstance(params, VasicekParam):
+            errMsgs.append('params must be a VasicekParam object.')
+        if not VasicekPricing.__ValidTenor(today):
+            errMsgs.append('today must be numeric and non-negative.')
+        if not VasicekPricing.__ValidTenor(bondMaturity):
+            errMsgs.append('bondMaturity must be numeric and non-negative.')
+        if len(errMsgs) > 0:
+            raise Exception('\n'.join(errMsgs))
+
         r = params.InstantaneousRate
         sig = params.Sigma
-        f = params.F
-        g = params.G
+        f = params.F(today, bondMaturity)
+        g = params.G(today, bondMaturity)
 
         return m.exp(-r * f - g)
 
     @staticmethod
-    def ZeroCouponBondOption(params, T_option):
-        """
+    def ZeroCouponBondOption(params, strike, today, T_option, bondMaturity):
+        """ (From Equation 7.43)
         * Calculate price of option on zero coupon bond obeying Vasicek's mean reversion model
         dr = alpha (mu - r) + sigma * dW.
         Inputs:
         * params: Expecting a VasicekParam object.
+        * strike: Bond option strike price (numeric, non-negative).
+        * today: Today's date from present in years (numeric, non-negative).
+        * T_option: Year that option expires (numeric, positive).
+        * bondMaturity: Maturity of bond in years (numeric, non-negative).
         We note in the formula that s corresponds to the expiration of the bond (from params object), T the expiration of the option.
         """
         errMsgs = []
         if not isinstance(params, VasicekParam):
             errMsgs.append("params must be a VasicekParam object.")
-        if not __IsNumeric(T_option) and not T_option > 0:
+        if not VasicekPricing.__ValidTenor(today):
+            errMsgs.append("today must be numeric and non-negative.")
+        if not VasicekPricing.__ValidTenor(T_option):
             errMsgs.append("T_option must be numeric and non-negative.")
-        origParams = params.
-        alpha = params.Alpha
-        r = params.InstantaneousRate
-        mu = params.Mu
-        f = params.F
-        g = params.G
+        if not VasicekPricing.__IsNumeric(strike):
+            errMsgs.append("strike must be numeric.")
+        if len(errMsgs) > 0:
+            raise Exception(''.join(errMsgs))
+
+        origParams = params.Params
+        t = today
+        s = bondMaturity
+        T = T_option
+        zero_t_s = VasicekPricing.ZeroCouponBond(params, t, s)
+        zero_t_T = VasicekPricing.ZeroCouponBond(params, t, T)
+        f = params.F(T, s)
         sig = params.Sigma
-        
-        m_p = -f * (m.exp(-params.Alpha))
-        
+        alpha = params.Alpha
+        # Calculate v_p, m_p_1, m_p_2:
         v_p = 1 - m.exp(-2 * alpha * (T - t))
         v_p /= 2 * alpha
-        v_p *= sig * f)
+        v_p *= (sig * f) ** 2
+        m_p_2 = m.log(zero_t_s / zero_t_T) - .5 * v_p
+        m_p_1 = m_p_2 + v_p
+        # Calculate option value:
+        d_1 = (m_p_1 - m.log((m_p_1 - m.log(strike))) / m.sqrt(v_p))
+        d_2 = (m_p_2 - m.log((m_p_1 - m.log(strike))) / m.sqrt(v_p))
+        optVal = zero_t_s * norm.cdf(d_1) - zero_t_T * strike * norm.cdf(d_2)
 
+        return optVal
+
+    @staticmethod
+    def BondFuturesPrice(params, today, futureExp, bondMaturity):
+        """
+        * Return fair strike of futures contract.
+        Inputs:
+        * params: Expecting a VasicekParam object.
+        * today: Years from present (numeric, non-negative).
+        * futureExp: Years until futures expires from present (numeric, non-negative).
+        * bondMaturity: Years until bond matures from present (numeric, non-negative).
+        """
+        errMsgs = []
+        if not isinstance(params, VasicekParam):
+            errMsgs.append('params must be a VasicekParam object.')
+        if not VasicekPricing.__ValidTenor(today):
+            errMsgs.append('today must be numeric, non-negative.')
+        if not VasicekPricing.__ValidTenor(futureExp):
+            errMsgs.append('futureExp must be numeric, non-negative.')
+        if not VasicekPricing.__ValidTenor(bondMaturity):
+            errMsgs.append('bondMaturity must be numeric, non-negative.')
+        if len(errMsgs) > 0:
+            raise Exception('\n'.join(errMsgs))
+
+        a = params.Alpha
+        r = params.InstantaneousRate
+        t = today    
+        s = bondMaturity
+        T = futureExp
+        mu = params.Mu
+        sig = params.Sigma
+        lam = params.Lambda
+        f_t_s = params.F(t, s)
+        f_t_T = params.F(t, T)
+        f_T_s = params.F(T, s)
+        # Calculate X(t, T, s) and Y(t, T, s):
+        x = params.X(t, T, s)
+        y = params.Y(t, T, s)
+
+        return m.exp(-r * x - y)
+
+    @staticmethod
+    def FuturesOptionPrice(params, strike, today, optionExp, bondExp, futureExp):
+        """
+        * Calculate price of option on future.
+        Inputs:
+        * params: Expecting a VasicekParam object.
+        * strike: Strike on option (numeric, positive).
+        * today: years from present to price derivative (numeric, non-negative).
+        * optionExp: option expiry, years from present (numeric, non-negative).
+        * bondExp: bond maturity, years from present (numeric, non-negative).
+        * futureExp: future contract expiration, years from present (numeric, non-negative).
+        """
+        errMsgs = []
+        if not isinstance(params, VasicekParam):
+            errMsgs.append('params must be a VasicekParam9 object.')
+        if not VasicekPricing.__ValidTenor(today):
+            errMsgs.append('today must be numeric, non-negative.')
+        if not VasicekPricing.__ValidTenor(optionExp):
+            errMsgs.append('optionExp must be numeric, non-negative.')
+        if not VasicekPricing.__ValidTenor(bondExp):
+            errMsgs.append('bondExp must be numeric, non-negative.')
+        if not VasicekPricing.__ValidTenor(futureExp):
+            errMsgs.append('futureExp must be numeric, non-negative.')
+        if not VasicekPricing.__IsNumeric(strike):
+            errMsgs.append('strike must be numeric.')
+        elif strike <= 0:
+            errMsgs.append('strike must be positive.')
+        
+        t = today
+        T = optionExp
+        s = bondExp
+        w = futureExp
+        a = params.Alpha
+        sig = params.Sigma
+        
+        x_T_s_w = params.X(T, s, w)
+        zero_t_T = VasicekPricing.ZeroCouponBond(params, today, s)
+        fut_t_s_w = VasicekPricing.BondFuturesPrice(params, today, s, w)
+        f_t_T = params.F(t, T)
+
+        h_t = zero_t_Y * fut_t_s_w * m.exp(sig * sig / 2 * f * f * x) 
+        v_h =  x_t_s_w * x_t_s_w 
+        v_h *= sig * sig * (1 - m.exp(-2 * a * (T - t)))
+        v_h /= 2 * a
+        d_h = 1 / m.sqrt(v_h)
+        d_h *= (m.log(h_t / (zero_t_T * strike) + v_h / 2)
+
+        price = h_t * norm.cdf(d_h) - zero_t_T * strike * norm.cdf(d_h - m.sqrt(v_h))
+
+        return price
 
     ###########################
     # Private Static Helpers:
@@ -156,6 +271,13 @@ class VasicekPricing(object):
         * Determine if value is numeric.
         """
         return isinstance(val, int) or isinstance(val, float)
+
+    @staticmethod
+    def __ValidTenor(val):
+        """
+        * Determine if value corresponds to a valid tenor (numeric, non-negative).
+        """
+        return VasicekPricing.__IsNumeric(val) and val >= 0
 
     @staticmethod
     def __Validate(params):
@@ -209,30 +331,7 @@ class VasicekParam(object):
     @property
     def t(self):
         return self.__t
-    @property
-    def F(self):
-        """ 
-        * Return F(t, T) used in several pricing formulae.
-        """
-        f = 1 - m.exp(-self.Alpha * (self.T - self.t))
-        f /= self.Alpha
-        return f
-    @property
-    def G(self):
-        """
-        * Return G(t, T) used in several pricing formulae.
-        """
-        mu = self.Mu
-        sig = self.Sigma
-        alpha = self.Alpha
-        lambd = self.Lambda
-        T = self.T
-        t = self.t
-        f = self.F
-        g = (mu - sig * sig / (2 * alpha * alpha) - sig * lambd / alpha)
-        g *= T - t - f
-        g += sig * sig * f * f / (4 * alpha)
-        return g
+    
     @property
     def ParamsString(self):
         """
@@ -309,6 +408,62 @@ class VasicekParam(object):
             raise Exception("Params must be a dictionary.")
         for key in params.keys():
             self.__SetAttribute(key, params[key])
+    #################
+    # Interface Functions:
+    #################
+    def F(self, t_1, t_2):
+        """ 
+        * Return F(t, T) used in several pricing formulae.
+        Inputs:
+        * t_1: Expecting numeric with t_2 > t_1.
+        * t_2: Expecting numeric with t_2 > t_1.
+        """
+        f = 1 - m.exp(-self.Alpha * (t_2 - t_1))
+        f /= self.Alpha
+        return f
+
+    def G(self, t_1, t_2):
+        """
+        * Return G(t, T) used in several pricing formulae.
+        """
+        mu = self.Mu
+        sig = self.Sigma
+        alpha = self.Alpha
+        lambd = self.Lambda
+        T = t_2
+        t = t_1
+        f = self.F(t_1, t_2)
+        g = (mu - sig * sig / (2 * alpha * alpha) - sig * lambd / alpha)
+        g *= T - t - f
+        g += sig * sig * f * f / (4 * alpha)
+    
+        return g
+
+    def X(self, t_1, t_2, t_3):
+        """
+        * Calculate X(t, T, s) function used in many pricing formulas.
+        """
+        f_t_s = self.F(t_1, t_3)
+        f_t_T = self.F(t_1, t_3)
+        
+        return f_t_s - f_t_T
+
+    def Y(self, t_1, t_2, t_3):
+        """
+        * Calculate Y(t, T, s) function used in many pricing formulas.
+        """
+        a = self.Alpha
+        mu = self.Mu
+        lam = self.Lambda
+        sig = self.Sigma
+        f_T_s = self.F(t_2, t_3)
+        x = self.X(t_1, t_2, t_3)
+        y = mu - (lam * sig / a)
+        y *= t_3 - t_2 - x
+        y -= sig * sig / (2 * a * a) * (x - a / 2 * x * x - f_T_s)
+        
+        return y
+        
     #################
     # Helper Methods:
     #################
