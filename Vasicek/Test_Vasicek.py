@@ -19,7 +19,7 @@ if __name__ == '__main__':
     params = VasicekParam(argDict)
     model = VasicekPricing(params)
     curve = model.GenerateZeroCurve(0, 30, 1)
-    plot = model.PlotZeroCurve(curve)
+    plot = model.PlotCurve(curve)
     optFV = model.ZCBOptionFV(.6, 0, .5, 5)
     futFV = model.ZCBFuturesFV(0, 1, 5)
     futOptFV = model.ZCBFuturesOptionFV(.5, 0, 1, 5, 6)

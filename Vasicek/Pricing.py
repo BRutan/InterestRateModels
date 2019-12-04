@@ -46,18 +46,18 @@ class InterestRatePricing(ABC):
     def ZeroCouponBondFV(self, today, bondMaturity):
         pass
 
-    def PlotZeroCurve(self, termStruct):
+    def PlotCurve(self, termStruct):
         """
-        * Plot the zero coupon yield curve (generated using GenerateZeroCurve()).
+        * Plot the zero coupon yield/discount factor curve (generated using GenerateZeroCurve()).
         Inputs:
         * params: Expecting VasicekParam object.
-        * termStruct: Expecting dictionary mapping { T - t -> zero_coupon_yield }.
+        * termStruct: Expecting dictionary mapping { T - t -> zero_coupon_yield or discount_factor }.
         """
         errMsgs = []
         if not isinstance(termStruct, dict):
             errMsgs.append('termStruct must be a dictionary.')
         elif len(termStruct.keys()) == 0:
-            errMsgs.append('termStruct must have at least one yield.')
+            errMsgs.append('termStruct must have at least one yield/df.')
         else:
             keyErr = False
             valErr = False
@@ -108,7 +108,7 @@ class InterestRatePricing(ABC):
         return InterestRatePricing.IsNumeric(val) and val >= 0
 
     @staticmethod
-    def __GenZeroCurve(model, tStart, tEnd, tStep):
+    def __GenZeroYieldCurve(model, tStart, tEnd, tStep):
         """
         * Generate zero coupon yield curve.
         Inputs:
@@ -140,6 +140,38 @@ class InterestRatePricing(ABC):
             tStart += tStep
         
         return termStruct
+    @staticmethod
+    def __GenDiscountFactorCurve(model, tStart, tEnd, tStep):
+        """
+        * Generate zero coupon discount factor curve.
+        Inputs:
+        * model: Expecting object derived from InterestRatePricing.
+        * tStart: Start year (numeric, non-negative).
+        * tEnd: End year (numeric, non-negative).
+        * tStep: Fraction of year step (numeric, positive).
+        """
+        errs = []
+        if not isinstance(model, InterestRatePricing):
+            errs.append('model must be derived from InterestRatePricing.')
+        if not InterestRatePricing.ValidTenor(tStart):
+            errs.append("tStart must be a non-negative numeric value.")
+        if not InterestRatePricing.ValidTenor(tEnd):
+            errs.append("tEnd must be a non-negative numeric value.")
+        elif tEnd < tStart:
+            errs.append("tEnd must be >= tStart.")
+        if not InterestRatePricing.ValidTenor(tStep):
+            errs.append("tStep must be a positive numeric value.")
+        if len(errs) > 0:
+            raise Exception('\n'.join(errs))
+
+        # Generate term structure { T - t -> zero_coupon_yield }:
+        dfs = {}
+        while tStart <= tEnd:
+            df = model.ZeroCouponBondFV(tStart, tEnd)
+            dfs[tEnd - tStart] = df
+            tStart += tStep
+        
+        return dfs
 
 class ParamsObj(ABC):
     """

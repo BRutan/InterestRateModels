@@ -114,8 +114,8 @@ class CoxIngersollRossPricing(InterestRatePricing):
         lam = self.Params.Lambda
         gam = self.Params.Gamma
         sig = self.Params.Sigma
-        zero_t_s = self.ZeroCouponBond(t, s)
-        zero_t_T = self.ZeroCouponBond(t, T)
+        zero_t_s = self.ZeroCouponBondFV(t, s)
+        zero_t_T = self.ZeroCouponBondFV(t, T)
         phi = 2 * gam / (sig * sig)
         phi /= m.exp(gam * (T - t)) - 1
         psi = (alpha + lam + gam) / (sig * sig)
@@ -138,7 +138,17 @@ class CoxIngersollRossPricing(InterestRatePricing):
         * tEnd: End year (numeric, non-negative).
         * tStep: Fraction of year step (numeric, positive).
         """
-        return InterestRatePricing._InterestRatePricing__GenZeroCurve(self, tStart, tEnd, tStep)
+        return InterestRatePricing._InterestRatePricing__GenZeroYieldCurve(self, tStart, tEnd, tStep)
+
+    def GenerateDiscountFactors(self, tStart, tEnd, tStep):
+        """
+        * Generate discount factor curve.
+        Inputs:
+        * tStart: Start year (numeric, non-negative).
+        * tEnd: End year (numeric, non-negative).
+        * tStep: Fraction of year step (numeric, positive).
+        """
+        return InterestRatePricing._InterestRatePricing__GenDiscountFactorCurve(self, tStart, tEnd, tStep)
 
     def CouponBondFV(self, coupon, cStart, cEnd, bMaturity, freq):
         """ (Equation 7.73)
@@ -172,14 +182,14 @@ class CoxIngersollRossPricing(InterestRatePricing):
         if len(errMsgs) > 0:
             raise Exception('\n'.join(errMsgs))
         # Generate discount factor curve using model:
-        curve = self.GenerateZeroCurve(cStart, bondMaturity, freq)
+        curve = self.GenerateDiscountFactors(cStart, bMaturity + freq, freq)
         # Calculate present value of bond according to set schedule:
         pv = 0
         while cStart <= cEnd:
             pv += curve[cStart]
             cStart += freq
         pv *= coupon
-        pv += curve[bondMaturity]
+        pv += curve[bMaturity]
 
         return pv
 
@@ -230,32 +240,45 @@ class CoxIngersollRossPricing(InterestRatePricing):
         
         return val
 
-    def CouponBondOptionFV(self, today, coupon, freq, optionExpiry, bondMaturity):
+    def CouponBondOptionFV(self, today, coupon, cStart, freq, optionExpiry, bondMaturity):
+        """ (Equation 7.74)
+        * Calculate fair value of option on coupon bond.
+        Inputs:
+        * today: Years from present to value futures contracts (numeric, non-negative).
+        * coupon: Fixed % of face value paid at each coupon date (numeric, non-negative).
+        * freq: Coupon payment frequency per year, in fraction of year (numeric, positive, <= 1).
+        * optionExpiry: Coupon start date, in years from present (numeric, non-negative).
+        * bondMaturity: Maturity date of bond, in years from present (numeric, non-negative, >= cStart).
         """
-        * 
-        """
+        errMsgs = []
         if not InterestRatePricing.IsNumeric(coupon):
             errMsgs.append('coupon must be numeric.')
         elif coupon < 0:
             errMsgs.append('coupon must be non-negative.')
-        if not InterestRatePricing.ValidTenor(cStart):
-            errMsgs.append('cStart must be numeric non-negative.')
-        if not InterestRatePricing.ValidTenor(today):
-            errMsgs.append('today must be numeric non-negative.')
-        if not InterestRatePricing.ValidTenor(cEnd):
-            errMsgs.append('cEnd must be numeric non-negative.')
-        elif cEnd < cStart:
-            errMsgs.append('cStart must be >= cEnd.')
+        if not InterestRatePricing.ValidTenor(optionExpiry):
+            errMsgs.append('optionExpiry must be numeric, non-negative.')
         if not InterestRatePricing.ValidTenor(bondMaturity):
             errMsgs.append('bondMaturity must be numeric non-negative.')
-        if not InterestRatePricing.ValidTenor(futureMaturity):
-            errMsgs.append('futureMaturity must be numeric non-negative.')
         if not InterestRatePricing.ValidTenor(freq):
             errMsgs.append('freq must be numeric non-negative.')
         elif freq > 1:
             errMsgs.append('freq must be <= 1.')
+        if not InterestRatePricing.ValidTenor(cStart):
+            errMsgs.append('cStart must be numeric non-negative.')
+        if not InterestRatePricing.ValidTenor(today):
+            errMsgs.append('today must be numeric, non-negative')
+                
+        fv = 0
+        params = self.Params
+        t = today
+        T_c = optionExpiry
+        T_i = cStart
+        while T_i <= bondMaturity:
+            fv += params.C(t, T_c, T_i)
+            T_i += freq
+        fv *= coupon
+        return fv
 
-        pass
 class CIRParams(VasicekParam):
     """
     * Object stores parameters used in the pricing methods in
@@ -293,11 +316,6 @@ class CIRParams(VasicekParam):
         c = 2 * a / (sig * sig)
         c /= (1 - exp)
         return c
-    def epsilon(self, t_1, t_2):
-        """
-        * Return 
-        """
-        pass
     def D(self, t_1, t_2, t_3):
         """
         * Return D value useful in pricing bond futures.

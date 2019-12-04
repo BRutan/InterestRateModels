@@ -52,7 +52,17 @@ class VasicekPricing(InterestRatePricing):
         * tEnd: End year (numeric, non-negative).
         * tStep: Fraction of year step (numeric, positive).
         """
-        return InterestRatePricing._InterestRatePricing__GenZeroCurve(self, tStart, tEnd, tStep)
+        return InterestRatePricing._InterestRatePricing__GenZeroYieldCurve(self, tStart, tEnd, tStep)
+
+    def GenerateDiscountFactors(self, tStart, tEnd, tStep):
+        """
+        * Generate discount factor curve.
+        Inputs:
+        * tStart: Start year (numeric, non-negative).
+        * tEnd: End year (numeric, non-negative).
+        * tStep: Fraction of year step (numeric, positive).
+        """
+        return InterestRatePricing._InterestRatePricing__GenDiscountFactorCurve(self, tStart, tEnd, tStep)
 
     def ZeroCouponBondFV(self, today, bondMaturity):
         """ (From Equation 7.30)
@@ -102,8 +112,8 @@ class VasicekPricing(InterestRatePricing):
         t = today
         s = bondMaturity
         T = T_option
-        zero_t_s = self.ZeroCouponBond(t, s)
-        zero_t_T = self.ZeroCouponBond(t, T)
+        zero_t_s = self.ZeroCouponBondFV(t, s)
+        zero_t_T = self.ZeroCouponBondFV(t, T)
         f = params.F(T, s)
         sig = params.Sigma
         alpha = params.Alpha
@@ -182,7 +192,7 @@ class VasicekPricing(InterestRatePricing):
         sig = params.Sigma
         
         x_T_s_w = params.X(T, s, w)
-        zero_t_T = self.ZeroCouponBond(today, s)
+        zero_t_T = self.ZeroCouponBondFV(today, s)
         fut_t_s_w = self.ZCBFuturesFV(today, s, w)
         f_t_T = params.F(t, T)
 
