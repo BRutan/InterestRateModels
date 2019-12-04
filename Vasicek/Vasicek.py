@@ -126,7 +126,7 @@ class VasicekPricing(object):
         return m.exp(-r * f - g)
 
     @staticmethod
-    def ZeroCouponBondOption(params, strike, today, T_option, bondMaturity):
+    def ZCBOptionPrice(params, strike, today, T_option, bondMaturity):
         """ (From Equation 7.43)
         * Calculate price of option on zero coupon bond obeying Vasicek's mean reversion model
         dr = alpha (mu - r) + sigma * dW.
@@ -173,7 +173,7 @@ class VasicekPricing(object):
         return optVal
 
     @staticmethod
-    def BondFuturesPrice(params, today, futureExp, bondMaturity):
+    def ZCBFuturesPrice(params, today, futureExp, bondMaturity):
         """
         * Return fair strike of futures contract.
         Inputs:
@@ -212,8 +212,8 @@ class VasicekPricing(object):
         return m.exp(-r * x - y)
 
     @staticmethod
-    def FuturesOptionPrice(params, strike, today, optionExp, bondExp, futureExp):
-        """
+    def ZCBFuturesOptionPrice(params, strike, today, optionExp, bondExp, futureExp):
+        """ (Problem 7.46)
         * Calculate price of option on future.
         Inputs:
         * params: Expecting a VasicekParam object.
@@ -241,22 +241,22 @@ class VasicekPricing(object):
         
         t = today
         T = optionExp
-        s = bondExp
-        w = futureExp
+        s = futureExp
+        w = bondExp
         a = params.Alpha
         sig = params.Sigma
         
         x_T_s_w = params.X(T, s, w)
         zero_t_T = VasicekPricing.ZeroCouponBond(params, today, s)
-        fut_t_s_w = VasicekPricing.BondFuturesPrice(params, today, s, w)
+        fut_t_s_w = VasicekPricing.ZCBFuturesPrice(params, today, s, w)
         f_t_T = params.F(t, T)
 
-        h_t = zero_t_Y * fut_t_s_w * m.exp(sig * sig / 2 * f * f * x) 
-        v_h =  x_t_s_w * x_t_s_w 
+        h_t = zero_t_T * fut_t_s_w * m.exp(sig * sig / 2 * f_t_T * f_t_T * x_T_s_w) 
+        v_h =  x_T_s_w * x_T_s_w
         v_h *= sig * sig * (1 - m.exp(-2 * a * (T - t)))
         v_h /= 2 * a
         d_h = 1 / m.sqrt(v_h)
-        d_h *= (m.log(h_t / (zero_t_T * strike) + v_h / 2)
+        d_h *= (m.log(h_t / (zero_t_T * strike)) + v_h / 2)
 
         price = h_t * norm.cdf(d_h) - zero_t_T * strike * norm.cdf(d_h - m.sqrt(v_h))
 
@@ -295,7 +295,7 @@ class VasicekParam(object):
     """
     * Object serves as parameter to Vasicek pricing static functions.
     """
-    __args = {"alpha" : .001, "lambda" : 0, "mu" : 0, "r" : 0, "sigma" : 0, "T" : 0, "t" : 0}
+    __args = {"alpha" : .001, "lambda" : 0, "mu" : 0, "r" : 0, "sigma" : 0}
     def __init__(self, argDict):
         """
         * Initiate new parameter object for VasicekModel object.
@@ -304,7 +304,7 @@ class VasicekParam(object):
         Call VasicekParams.ArgDict() to get copy of default kwargs dictionary.
         """
         # Ensure that all arguments have been passed:
-        self.__req = {"alpha" : False, "lambda" : False, "mu" : False, "r" : False, "sigma" : False, "T" : False, "t" : False}
+        self.__req = {"alpha" : False, "lambda" : False, "mu" : False, "r" : False, "sigma" : False}
         self.__ValidateAndSet(argDict)
 
     #################
@@ -326,13 +326,6 @@ class VasicekParam(object):
     def Sigma(self):
         return self.__sigma
     @property
-    def T(self):
-        return self.__T
-    @property
-    def t(self):
-        return self.__t
-    
-    @property
     def ParamsString(self):
         """
         * Return a string detailing the parameters.
@@ -344,7 +337,7 @@ class VasicekParam(object):
         """
         * Return dictionary containing this object's parameters.
         """
-        return {"alpha" : self.Alpha, "lambda" : self.Lambda, "mu" : self.Mu, "r" : self.InstantaneousRate, "sigma" : self.Sigma, "T" : self.T, "t" : self.t}
+        return {"alpha" : self.Alpha, "lambda" : self.Lambda, "mu" : self.Mu, "r" : self.InstantaneousRate, "sigma" : self.Sigma}
     #################
     # Setters:
     #################
@@ -384,24 +377,6 @@ class VasicekParam(object):
             raise Exception("Sigma must be non-negative.")
         self.__req['sigma'] = True
         self.__sigma = sig
-    @T.setter
-    def T(self, T_in):
-        if not isinstance(T_in, int) and not isinstance(T_in, float):
-            raise Exception("T must be numeric.")
-        elif T_in < 0:
-            raise Exception("T must be non-negative.")
-        elif T_in < self.t:
-            raise Exception("T must be >= t.")
-        self.__req['T'] = True
-        self.__T = T_in
-    @t.setter
-    def t(self, t_in):
-        if not isinstance(t_in, int) and not isinstance(t_in, float):
-            raise Exception("t must be numeric.")
-        elif t_in < 0:
-            raise Exception("t must be non-negative.")
-        self.__req['t'] = True
-        self.__t = t_in
     @Params.setter
     def Params(self, params):
         if not isinstance(params, dict):
@@ -444,7 +419,7 @@ class VasicekParam(object):
         * Calculate X(t, T, s) function used in many pricing formulas.
         """
         f_t_s = self.F(t_1, t_3)
-        f_t_T = self.F(t_1, t_3)
+        f_t_T = self.F(t_1, t_2)
         
         return f_t_s - f_t_T
 
@@ -458,7 +433,7 @@ class VasicekParam(object):
         sig = self.Sigma
         f_T_s = self.F(t_2, t_3)
         x = self.X(t_1, t_2, t_3)
-        y = mu - (lam * sig / a)
+        y = mu - lam * sig / a - sig * sig / (2 * a * a)
         y *= t_3 - t_2 - x
         y -= sig * sig / (2 * a * a) * (x - a / 2 * x * x - f_T_s)
         
@@ -490,8 +465,6 @@ class VasicekParam(object):
             return 'Mu'
         if paramStr == 'sigma':
             return 'Sigma'
-        if paramStr == 'T' or paramStr == 't':
-            return paramStr
         
     @staticmethod
     def ArgDict():
