@@ -21,7 +21,6 @@ if __name__ == '__main__':
     argDict['t'] = 0
     params = VasicekParam(argDict)
     curve = VasicekPricing.GenerateZeroCurve(params, 1, 30, 1)
-    VasicekPricing.PlotZeroCurve(curve)
+    plot = VasicekPricing.PlotZeroCurve(params, curve)
 
-    pass
 

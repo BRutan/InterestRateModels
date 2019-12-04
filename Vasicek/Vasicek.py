@@ -31,7 +31,7 @@ class VasicekPricing(object):
         """
         errMsgs = []
         if not isinstance(params, VasicekParam):
-            errMsgs.append('')
+            errMsgs.append('params must be a VasicekParam object.')
         if not isinstance(termStruct, dict):
             errMsgs.append('termStruct must be a dictionary.')
         elif len(termStruct.keys()) == 0:
@@ -51,27 +51,28 @@ class VasicekPricing(object):
         if len(errMsgs) > 0:
             raise Exception('\n'.join(errMsgs))
 
-        X = termStruct.keys()
-        Y = termStruct.values()
-        tEnd = max(list(X)) - 1
-        title = ''.join(['Zero Curve (Vasicek Model)', params.ParamsString])
-        tStart = min(list(X))
+        X = list(termStruct.keys())
+        Y = list(termStruct.values())
+        tEnd = max(X) - 1
+        title = ''.join(['Zero Curve (Vasicek Model){', params.ParamsString, '}'])
+        tStart = min(X)
         fig = plotter.figure()
-        fig .suptitle(title, fontsize = 10)
+        fig .suptitle(title, fontsize = 8)
         axis = fig.add_subplot('111')
         axis.plot(X, Y)
         axis.set_ylabel('y(T - t)')
         axis.set_xlabel('T - t')
 
-        plotObj.show()
+        fig.show()
 
-        return plotObj
+        return fig
 
     @staticmethod
     def GenerateZeroCurve(params, tStart, tEnd, tStep):
         """
         * Generate zero coupon yield curve.
         Inputs:
+        * params: Expecting a VasicekParam object.
         * tStart: Start year (numeric, non-negative).
         * tEnd: End year (numeric, non-negative).
         * tStep: Fraction of year step (numeric, positive).
@@ -94,7 +95,7 @@ class VasicekPricing(object):
             params.t = tStart
             bondPrice = VasicekPricing.ZeroCouponBond(params)
             _yield = m.log(1 / bondPrice) / (tEnd - tStart)
-            termStruct[tStart] = _yield
+            termStruct[tEnd - tStart] = _yield
             tStart += tStep
         # Return passed parameters to original state:
         params = origParams
@@ -110,44 +111,40 @@ class VasicekPricing(object):
         * params: Expecting a VasicekParam object.
         """
         VasicekPricing.__Validate(params)
-
-        alpha = params.Alpha
-        lambd = params.Lambda
-        mu = params.Mu
-        t = params.t
-        T = params.T
         r = params.InstantaneousRate
         sig = params.Sigma
-        # Calculate F(t, T): 
-        f = 1 - m.exp(-alpha * (T - t))
-        f /= alpha
-        # Calculate G(t, T):
-        g = (mu - sig * sig / (2 * alpha * alpha) - sig * lambd / alpha)
-        g *= T - t - f
-        g += sig * sig * f * f / (4 * alpha)
+        f = params.F
+        g = params.G
 
         return m.exp(-r * f - g)
 
     @staticmethod
-    def ZeroCouponBondOption(p_s_t, p_t_T, strike, params):
+    def ZeroCouponBondOption(params, T_option):
         """
         * Calculate price of option on zero coupon bond obeying Vasicek's mean reversion model
-        dr = alpha (mu - r) + sigma * dW
+        dr = alpha (mu - r) + sigma * dW.
         Inputs:
-        * p_s_t: Expecting price of bond at ... (numeric, positive).
-        * p_t_T: Expecting price of bond at present (numeric, positive).
         * params: Expecting a VasicekParam object.
+        We note in the formula that s corresponds to the expiration of the bond (from params object), T the expiration of the option.
         """
-        VasicekPricing.__Validate(params)
+        errMsgs = []
+        if not isinstance(params, VasicekParam):
+            errMsgs.append("params must be a VasicekParam object.")
+        if not __IsNumeric(T_option) and not T_option > 0:
+            errMsgs.append("T_option must be numeric and non-negative.")
+        origParams = params.
         alpha = params.Alpha
-        lambd = params.Lambda
-        mu = params.Mu
-        t = params.t
-        T = params.T
         r = params.InstantaneousRate
+        mu = params.Mu
+        f = params.F
+        g = params.G
         sig = params.Sigma
         
+        m_p = -f * (m.exp(-params.Alpha))
         
+        v_p = 1 - m.exp(-2 * alpha * (T - t))
+        v_p /= 2 * alpha
+        v_p *= sig * f)
 
 
     ###########################
@@ -171,6 +168,7 @@ class VasicekPricing(object):
         * Map string to function.
         """
         pass
+
 class VasicekParam(object):
     """
     * Object serves as parameter to Vasicek pricing static functions.
@@ -212,12 +210,36 @@ class VasicekParam(object):
     def t(self):
         return self.__t
     @property
+    def F(self):
+        """ 
+        * Return F(t, T) used in several pricing formulae.
+        """
+        f = 1 - m.exp(-self.Alpha * (self.T - self.t))
+        f /= self.Alpha
+        return f
+    @property
+    def G(self):
+        """
+        * Return G(t, T) used in several pricing formulae.
+        """
+        mu = self.Mu
+        sig = self.Sigma
+        alpha = self.Alpha
+        lambd = self.Lambda
+        T = self.T
+        t = self.t
+        f = self.F
+        g = (mu - sig * sig / (2 * alpha * alpha) - sig * lambd / alpha)
+        g *= T - t - f
+        g += sig * sig * f * f / (4 * alpha)
+        return g
+    @property
     def ParamsString(self):
         """
         * Return a string detailing the parameters.
         """
         params = self.Params
-        return ','.join([key + ':' + str(params[key]) for key in params])
+        return ','.join([key + ' :{0:.2f}'.format(params[key]) for key in params])
     @property
     def Params(self):
         """
