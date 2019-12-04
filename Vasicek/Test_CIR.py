@@ -17,5 +17,10 @@ if __name__ == '__main__':
     params = CIRParams(args)
     model = CoxIngersollRossPricing(params)
     curve = model.GenerateZeroCurve(0, 30, 1)
+    plot = model.PlotZeroCurve(curve)
 
+    futuresFV = model.ZCBFuturesFV(0, 1, 5)
+    optFV = model.ZCBOptionFV(0, .5, 5, .6)
+
+    print('pause')
 

@@ -43,7 +43,7 @@ class InterestRatePricing(ABC):
     # Methods:
     ########################
     @abstractmethod
-    def ZeroCouponBond(self, today, bondMaturity):
+    def ZeroCouponBondFV(self, today, bondMaturity):
         pass
 
     def PlotZeroCurve(self, termStruct):
@@ -120,11 +120,13 @@ class InterestRatePricing(ABC):
         errs = []
         if not isinstance(model, InterestRatePricing):
             errs.append('model must be derived from InterestRatePricing.')
-        if not InterestRatePricing.IsNumeric(tStart) and not tStart >= 0:
+        if not InterestRatePricing.ValidTenor(tStart):
             errs.append("tStart must be a non-negative numeric value.")
-        if not InterestRatePricing.IsNumeric(tEnd) and not tEnd >= 0 and not tEnd > tStart:
-            errs.append("tEnd must be a non-negative numeric value greater than tStart.")
-        if not InterestRatePricing.IsNumeric(tStep) and not tStep > 0:
+        if not InterestRatePricing.ValidTenor(tEnd):
+            errs.append("tEnd must be a non-negative numeric value.")
+        elif tEnd < tStart:
+            errs.append("tEnd must be >= tStart.")
+        if not InterestRatePricing.ValidTenor(tStep):
             errs.append("tStep must be a positive numeric value.")
         if len(errs) > 0:
             raise Exception('\n'.join(errs))
@@ -132,7 +134,7 @@ class InterestRatePricing(ABC):
         # Generate term structure { T - t -> zero_coupon_yield }:
         termStruct = {}
         while tStart < tEnd:
-            bondPrice = model.ZeroCouponBond(tStart, tEnd)
+            bondPrice = model.ZeroCouponBondFV(tStart, tEnd)
             _yield = m.log(1 / bondPrice) / (tEnd - tStart)
             termStruct[tEnd - tStart] = _yield
             tStart += tStep

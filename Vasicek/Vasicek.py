@@ -54,9 +54,9 @@ class VasicekPricing(InterestRatePricing):
         """
         return InterestRatePricing._InterestRatePricing__GenZeroCurve(self, tStart, tEnd, tStep)
 
-    def ZeroCouponBond(self, today, bondMaturity):
+    def ZeroCouponBondFV(self, today, bondMaturity):
         """ (From Equation 7.30)
-        * Calculate price of zero coupon bond obeying Vasicek's mean reversion model.
+        * Calculate fair value of zero coupon bond obeying Vasicek's mean reversion model.
         dr = alpha (mu - r) + sigma * dW
         Inputs:
         * today: Years from present (numeric, non-negative).
@@ -78,7 +78,7 @@ class VasicekPricing(InterestRatePricing):
 
         return m.exp(-r * f - g)
 
-    def ZCBOptionPrice(self, strike, today, T_option, bondMaturity):
+    def ZCBOptionFV(self, strike, today, T_option, bondMaturity):
         """ (From Equation 7.43)
         * Calculate price of option on zero coupon bond obeying Vasicek's mean reversion model.
         Inputs:
@@ -120,7 +120,7 @@ class VasicekPricing(InterestRatePricing):
 
         return optVal
 
-    def ZCBFuturesPrice(self, today, futureExp, bondMaturity):
+    def ZCBFuturesFV(self, today, futureExp, bondMaturity):
         """
         * Return fair strike of futures contract.
         Inputs:
@@ -139,25 +139,18 @@ class VasicekPricing(InterestRatePricing):
             raise Exception('\n'.join(errMsgs))
 
         params = self.Params
-        a = params.Alpha
         r = params.InstantaneousRate
         t = today    
         s = bondMaturity
         T = futureExp
-        mu = params.Mu
-        sig = params.Sigma
-        lam = params.Lambda
-        f_t_s = params.F(t, s)
-        f_t_T = params.F(t, T)
-        f_T_s = params.F(T, s)
         # Calculate X(t, T, s) and Y(t, T, s):
         x = params.X(t, T, s)
         y = params.Y(t, T, s)
 
         return m.exp(-r * x - y)
 
-    def ZCBFuturesOptionPrice(self, strike, today, optionExp, bondExp, futureExp):
-        """ (Problem 7.46)
+    def ZCBFuturesOptionFV(self, strike, today, optionExp, bondExp, futureExp):
+        """ (Equation 7.46)
         * Calculate price of option on future.
         Inputs:
         * strike: Strike on option (numeric, positive).
@@ -190,7 +183,7 @@ class VasicekPricing(InterestRatePricing):
         
         x_T_s_w = params.X(T, s, w)
         zero_t_T = self.ZeroCouponBond(today, s)
-        fut_t_s_w = self.ZCBFuturesPrice(today, s, w)
+        fut_t_s_w = self.ZCBFuturesFV(today, s, w)
         f_t_T = params.F(t, T)
 
         h_t = zero_t_T * fut_t_s_w * m.exp(sig * sig / 2 * f_t_T * f_t_T * x_T_s_w) 
