@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>cc17efd7-3f92-46be-a80f-2ab1fcab801a</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>Test.py</StartupFile>
+    <StartupFile>Test_CIR.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -21,7 +21,16 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Test.py">
+    <Compile Include="CoxIngersollRoss.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Pricing.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Test_CIR.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Test_Vasicek.py">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Vasicek.py" />

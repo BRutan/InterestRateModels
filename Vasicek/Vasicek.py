@@ -2,122 +2,75 @@
 # Vasicek.py
 ############################################
 # Description:
-# * 
+# * Define VasicekPricing class (derived from InterestRatePricing abstract class) to
+# price interest rate products and derivatives following Vasicek's mean reverting interest rate SDE
+# dr = alpha (mu - r) + sigma * dW.
 
 import math as m
 from scipy.stats import norm
 import matplotlib.pyplot as plotter
 from mpl_toolkits.mplot3d import Axes3D
+from Pricing import InterestRatePricing, ParamsObj
 
-class VasicekPricing(object):
+__all__ = [ 'VasicekParam', 'VasicekPricing' ]
+
+class VasicekPricing(InterestRatePricing):
     """
-    * Singleton class that implements pricing obeying the Vasicek interest rate model.
+    * Class that implements pricing obeying the Vasicek interest rate model
+    dr = alpha (mu - r) + sigma * dW.
     """
-    def __init__(self):
-        """
-        * Do nothing since object is a singleton.
-        """
-        pass
     ###############################
-    # Static Methods:
+    # Constructors:
     ###############################
-    @staticmethod
-    def PlotZeroCurve(params, termStruct):
+    def __init__(self, params):
         """
-        * Plot the zero coupon yield curve (generated using GenerateZeroCurve()).
+        * Initialize class with VasicekParam object.
         Inputs:
-        * params: Expecting VasicekParam object.
-        * termStruct: Expecting dictionary mapping { T - t -> zero_coupon_yield }.
+        * params: Expecting a VasicekParam object.
         """
-        errMsgs = []
+        self.Params = params
+        self.ModelName = 'Vasicek'
+    ###############################
+    # Properties:
+    ###############################
+    @property
+    def Params(self):
+        return InterestRatePricing.Params
+    @Params.setter
+    def Params(self, params):
         if not isinstance(params, VasicekParam):
-            errMsgs.append('params must be a VasicekParam object.')
-        if not isinstance(termStruct, dict):
-            errMsgs.append('termStruct must be a dictionary.')
-        elif len(termStruct.keys()) == 0:
-            errMsgs.append('termStruct must have at least one yield.')
-        else:
-            keyErr = False
-            valErr = False
-            for key in termStruct.keys():
-                if not keyErr and not VasicekPricing.__IsNumeric(key):
-                    errMsgs.append('All keys in termStruct must be numeric.')
-                    keyErr = True
-                if not valErr and not VasicekPricing.__IsNumeric(termStruct[key]):
-                    errMsgs.append('All values in termStruct must be numeric.')
-                    valErr = True
-                if keyErr and valErr:
-                    break
-        if len(errMsgs) > 0:
-            raise Exception('\n'.join(errMsgs))
-
-        X = list(termStruct.keys())
-        Y = list(termStruct.values())
-        tEnd = max(X) - 1
-        title = ''.join(['Zero Curve (Vasicek Model){', params.ParamsString, '}'])
-        tStart = min(X)
-        fig = plotter.figure()
-        fig .suptitle(title, fontsize = 8)
-        axis = fig.add_subplot('111')
-        axis.plot(X, Y)
-        axis.set_ylabel('y(T - t)')
-        axis.set_xlabel('T - t')
-
-        fig.show()
-
-        return fig
-
-    @staticmethod
-    def GenerateZeroCurve(params, tStart, tEnd, tStep):
+            raise Exception('params must be a VasicekParam object.')
+        InterestRatePricing.Params = params
+    ###############################
+    # Interface Methods:
+    ###############################
+    def GenerateZeroCurve(self, tStart, tEnd, tStep):
         """
         * Generate zero coupon yield curve.
         Inputs:
-        * params: Expecting a VasicekParam object.
         * tStart: Start year (numeric, non-negative).
         * tEnd: End year (numeric, non-negative).
         * tStep: Fraction of year step (numeric, positive).
         """
-        errs = []
-        if not isinstance(params, VasicekParam):
-            errs.append('params must be a VasicekParam object.')
-        if not VasicekPricing.__IsNumeric(tStart) and not tStart >= 0:
-            errs.append("tStart must be a non-negative numeric value.")
-        if not VasicekPricing.__IsNumeric(tEnd) and not tEnd >= 0 and not tEnd > tStart:
-            errs.append("tEnd must be a non-negative numeric value greater than tStart.")
-        if not VasicekPricing.__IsNumeric(tStep) and not tStep > 0:
-            errs.append("tStep must be a positive numeric value.")
-        if len(errs) > 0:
-            raise Exception('\n'.join(errs))
-        # Generate term structure { T - t -> zero_coupon_yield }:
-        termStruct = {}
-        while tStart < tEnd:
-            bondPrice = VasicekPricing.ZeroCouponBond(params, tStart, tEnd)
-            _yield = m.log(1 / bondPrice) / (tEnd - tStart)
-            termStruct[tEnd - tStart] = _yield
-            tStart += tStep
-        
-        return termStruct
+        return InterestRatePricing._InterestRatePricing__GenZeroCurve(self, tStart, tEnd, tStep)
 
-    @staticmethod
-    def ZeroCouponBond(params, today, bondMaturity):
+    def ZeroCouponBond(self, today, bondMaturity):
         """ (From Equation 7.30)
         * Calculate price of zero coupon bond obeying Vasicek's mean reversion model.
         dr = alpha (mu - r) + sigma * dW
         Inputs:
-        * params: Expecting a VasicekParam object.
         * today: Years from present (numeric, non-negative).
         * bondMaturity: Years until bond matures from present (numeric, non-negative).
         """
         errMsgs = []
-        if not isinstance(params, VasicekParam):
-            errMsgs.append('params must be a VasicekParam object.')
-        if not VasicekPricing.__ValidTenor(today):
+        if not InterestRatePricing.ValidTenor(today):
             errMsgs.append('today must be numeric and non-negative.')
-        if not VasicekPricing.__ValidTenor(bondMaturity):
+        if not InterestRatePricing.ValidTenor(bondMaturity):
             errMsgs.append('bondMaturity must be numeric and non-negative.')
         if len(errMsgs) > 0:
             raise Exception('\n'.join(errMsgs))
 
+        params = self.Params
         r = params.InstantaneousRate
         sig = params.Sigma
         f = params.F(today, bondMaturity)
@@ -125,13 +78,10 @@ class VasicekPricing(object):
 
         return m.exp(-r * f - g)
 
-    @staticmethod
-    def ZCBOptionPrice(params, strike, today, T_option, bondMaturity):
+    def ZCBOptionPrice(self, strike, today, T_option, bondMaturity):
         """ (From Equation 7.43)
-        * Calculate price of option on zero coupon bond obeying Vasicek's mean reversion model
-        dr = alpha (mu - r) + sigma * dW.
+        * Calculate price of option on zero coupon bond obeying Vasicek's mean reversion model.
         Inputs:
-        * params: Expecting a VasicekParam object.
         * strike: Bond option strike price (numeric, non-negative).
         * today: Today's date from present in years (numeric, non-negative).
         * T_option: Year that option expires (numeric, positive).
@@ -139,23 +89,21 @@ class VasicekPricing(object):
         We note in the formula that s corresponds to the expiration of the bond (from params object), T the expiration of the option.
         """
         errMsgs = []
-        if not isinstance(params, VasicekParam):
-            errMsgs.append("params must be a VasicekParam object.")
-        if not VasicekPricing.__ValidTenor(today):
+        if not InterestRatePricing.ValidTenor(today):
             errMsgs.append("today must be numeric and non-negative.")
-        if not VasicekPricing.__ValidTenor(T_option):
+        if not InterestRatePricing.ValidTenor(T_option):
             errMsgs.append("T_option must be numeric and non-negative.")
-        if not VasicekPricing.__IsNumeric(strike):
+        if not InterestRatePricing.IsNumeric(strike):
             errMsgs.append("strike must be numeric.")
         if len(errMsgs) > 0:
             raise Exception(''.join(errMsgs))
 
-        origParams = params.Params
+        params = self.Params
         t = today
         s = bondMaturity
         T = T_option
-        zero_t_s = VasicekPricing.ZeroCouponBond(params, t, s)
-        zero_t_T = VasicekPricing.ZeroCouponBond(params, t, T)
+        zero_t_s = self.ZeroCouponBond(t, s)
+        zero_t_T = self.ZeroCouponBond(t, T)
         f = params.F(T, s)
         sig = params.Sigma
         alpha = params.Alpha
@@ -172,28 +120,25 @@ class VasicekPricing(object):
 
         return optVal
 
-    @staticmethod
-    def ZCBFuturesPrice(params, today, futureExp, bondMaturity):
+    def ZCBFuturesPrice(self, today, futureExp, bondMaturity):
         """
         * Return fair strike of futures contract.
         Inputs:
-        * params: Expecting a VasicekParam object.
         * today: Years from present (numeric, non-negative).
         * futureExp: Years until futures expires from present (numeric, non-negative).
         * bondMaturity: Years until bond matures from present (numeric, non-negative).
         """
         errMsgs = []
-        if not isinstance(params, VasicekParam):
-            errMsgs.append('params must be a VasicekParam object.')
-        if not VasicekPricing.__ValidTenor(today):
+        if not InterestRatePricing.ValidTenor(today):
             errMsgs.append('today must be numeric, non-negative.')
-        if not VasicekPricing.__ValidTenor(futureExp):
+        if not InterestRatePricing.ValidTenor(futureExp):
             errMsgs.append('futureExp must be numeric, non-negative.')
-        if not VasicekPricing.__ValidTenor(bondMaturity):
+        if not InterestRatePricing.ValidTenor(bondMaturity):
             errMsgs.append('bondMaturity must be numeric, non-negative.')
         if len(errMsgs) > 0:
             raise Exception('\n'.join(errMsgs))
 
+        params = self.Params
         a = params.Alpha
         r = params.InstantaneousRate
         t = today    
@@ -211,12 +156,10 @@ class VasicekPricing(object):
 
         return m.exp(-r * x - y)
 
-    @staticmethod
-    def ZCBFuturesOptionPrice(params, strike, today, optionExp, bondExp, futureExp):
+    def ZCBFuturesOptionPrice(self, strike, today, optionExp, bondExp, futureExp):
         """ (Problem 7.46)
         * Calculate price of option on future.
         Inputs:
-        * params: Expecting a VasicekParam object.
         * strike: Strike on option (numeric, positive).
         * today: years from present to price derivative (numeric, non-negative).
         * optionExp: option expiry, years from present (numeric, non-negative).
@@ -224,21 +167,20 @@ class VasicekPricing(object):
         * futureExp: future contract expiration, years from present (numeric, non-negative).
         """
         errMsgs = []
-        if not isinstance(params, VasicekParam):
-            errMsgs.append('params must be a VasicekParam9 object.')
-        if not VasicekPricing.__ValidTenor(today):
+        if not InterestRatePricing.ValidTenor(today):
             errMsgs.append('today must be numeric, non-negative.')
-        if not VasicekPricing.__ValidTenor(optionExp):
+        if not InterestRatePricing.ValidTenor(optionExp):
             errMsgs.append('optionExp must be numeric, non-negative.')
-        if not VasicekPricing.__ValidTenor(bondExp):
+        if not InterestRatePricing.ValidTenor(bondExp):
             errMsgs.append('bondExp must be numeric, non-negative.')
-        if not VasicekPricing.__ValidTenor(futureExp):
+        if not InterestRatePricing.ValidTenor(futureExp):
             errMsgs.append('futureExp must be numeric, non-negative.')
-        if not VasicekPricing.__IsNumeric(strike):
+        if not InterestRatePricing.IsNumeric(strike):
             errMsgs.append('strike must be numeric.')
         elif strike <= 0:
             errMsgs.append('strike must be positive.')
         
+        params = self.Params
         t = today
         T = optionExp
         s = futureExp
@@ -247,8 +189,8 @@ class VasicekPricing(object):
         sig = params.Sigma
         
         x_T_s_w = params.X(T, s, w)
-        zero_t_T = VasicekPricing.ZeroCouponBond(params, today, s)
-        fut_t_s_w = VasicekPricing.ZCBFuturesPrice(params, today, s, w)
+        zero_t_T = self.ZeroCouponBond(today, s)
+        fut_t_s_w = self.ZCBFuturesPrice(today, s, w)
         f_t_T = params.F(t, T)
 
         h_t = zero_t_T * fut_t_s_w * m.exp(sig * sig / 2 * f_t_T * f_t_T * x_T_s_w) 
@@ -262,36 +204,8 @@ class VasicekPricing(object):
 
         return price
 
-    ###########################
-    # Private Static Helpers:
-    ###########################
-    @staticmethod
-    def __IsNumeric(val):
-        """
-        * Determine if value is numeric.
-        """
-        return isinstance(val, int) or isinstance(val, float)
 
-    @staticmethod
-    def __ValidTenor(val):
-        """
-        * Determine if value corresponds to a valid tenor (numeric, non-negative).
-        """
-        return VasicekPricing.__IsNumeric(val) and val >= 0
-
-    @staticmethod
-    def __Validate(params):
-        if not isinstance(params, VasicekParam):
-            raise Exception("params must be a VasicekParam object.")
-       
-    @staticmethod
-    def __StringToFunction(str):
-        """
-        * Map string to function.
-        """
-        pass
-
-class VasicekParam(object):
+class VasicekParam(ParamsObj):
     """
     * Object serves as parameter to Vasicek pricing static functions.
     """
@@ -303,8 +217,6 @@ class VasicekParam(object):
         Possible parameters are [alpha, lambda, mu, r, T, t].
         Call VasicekParams.ArgDict() to get copy of default kwargs dictionary.
         """
-        # Ensure that all arguments have been passed:
-        self.__req = {"alpha" : False, "lambda" : False, "mu" : False, "r" : False, "sigma" : False}
         self.__ValidateAndSet(argDict)
 
     #################
@@ -325,13 +237,6 @@ class VasicekParam(object):
     @property
     def Sigma(self):
         return self.__sigma
-    @property
-    def ParamsString(self):
-        """
-        * Return a string detailing the parameters.
-        """
-        params = self.Params
-        return ','.join([key + ' :{0:.2f}'.format(params[key]) for key in params])
     @property
     def Params(self):
         """
@@ -465,7 +370,6 @@ class VasicekParam(object):
             return 'Mu'
         if paramStr == 'sigma':
             return 'Sigma'
-        
     @staticmethod
     def ArgDict():
         """ 
@@ -480,6 +384,8 @@ class VasicekParam(object):
         """
         * Ensure all parameters are valid.
         """
+        # Ensure that all arguments have been passed:
+        self.__req = {"alpha" : False, "lambda" : False, "mu" : False, "r" : False, "sigma" : False}
         errMsgs = []
         for arg in argDict.keys():
             if arg != 'T':

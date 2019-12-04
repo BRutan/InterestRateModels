@@ -18,7 +18,7 @@ class CIRParams(object):
     * Object stores parameters used in the pricing methods in
     CoxIngersolRoss object.
     """
-    __args = {}
+    __args = {'alpha' : .001, 'mu' : 0, 'r' : 0, 'sigma' : 0}
     def __init__(self, params):
         pass
     
